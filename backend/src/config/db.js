@@ -1,4 +1,11 @@
 const mysql = require('mysql2/promise');
+const fs = require('fs');    // Added: File System module
+const path = require('path'); // Added: Path module
+
+// 1. Construct the absolute path to your certificate
+// Since db.js and ca.pem are in the SAME folder (backend/src/config), 
+// we can use __dirname to find it automatically.
+const caCertPath = path.join(__dirname, 'ca.pem');
 
 // Create connection pool
 const pool = mysql.createPool({
@@ -8,8 +15,10 @@ const pool = mysql.createPool({
     database: process.env.DB_NAME,
     port: Number(process.env.DB_PORT),
 
+    // 2. Updated SSL configuration
     ssl: {
-        rejectUnauthorized: false
+        ca: fs.readFileSync(caCertPath), // Read the file
+        rejectUnauthorized: true         // Securely verify the certificate
     },
 
     waitForConnections: true,

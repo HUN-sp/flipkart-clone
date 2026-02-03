@@ -1,5 +1,6 @@
-const mysql = require('mysql2/promise');
 require('dotenv').config();
+const { pool } = require('../config/db');
+
 
 const categories = [
     { name: 'Electronics', description: 'Mobiles, Laptops, Cameras & more', image_url: 'https://rukminim2.flixcart.com/fk-p-flap/80/80/image/69c6589653afdb9a.png' },
@@ -538,19 +539,11 @@ async function seed() {
     let connection;
 
     try {
-        // Create connection
-        connection = await mysql.createConnection({
-            host: process.env.DB_HOST || 'localhost',
-            user: process.env.DB_USER || 'root',
-            password: process.env.DB_PASSWORD || '',
-            database: process.env.DB_NAME || 'flipkart_clone',
-            multipleStatements: true
-        });
-
+        connection = await pool.getConnection();
         console.log('🌱 Starting seed process...\n');
 
-        // Clear existing data
-        console.log('Clearing existing data...');
+        /* ---------- CLEAR DATA ---------- */
+        console.log('🧹 Clearing existing data...');
         await connection.query('SET FOREIGN_KEY_CHECKS = 0');
         await connection.query('TRUNCATE TABLE order_items');
         await connection.query('TRUNCATE TABLE orders');
@@ -558,9 +551,10 @@ async function seed() {
         await connection.query('TRUNCATE TABLE products');
         await connection.query('TRUNCATE TABLE categories');
         await connection.query('SET FOREIGN_KEY_CHECKS = 1');
+        console.log('✅ Tables cleared\n');
 
-        // Insert categories
-        console.log('Inserting categories...');
+        /* ---------- INSERT CATEGORIES ---------- */
+        console.log('📦 Inserting categories...');
         for (const category of categories) {
             await connection.query(
                 'INSERT INTO categories (name, description, image_url) VALUES (?, ?, ?)',
@@ -569,57 +563,56 @@ async function seed() {
         }
         console.log(`✅ Inserted ${categories.length} categories\n`);
 
-        // Insert products
-        console.log('Inserting products...');
+        /* ---------- INSERT PRODUCTS ---------- */
+        console.log('🛒 Inserting products...');
         for (const product of products) {
-            await connection.query(`
-                INSERT INTO products 
-                (name, description, price, original_price, discount_percent, category_id, brand, image_url, rating, rating_count, stock, highlights, specifications)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [
-                product.name,
-                product.description,
-                product.price,
-                product.original_price,
-                product.discount_percent,
-                product.category_id,
-                product.brand,
-                product.image_url,
-                product.rating,
-                product.rating_count,
-                product.stock,
-                product.highlights,
-                product.specifications
-            ]);
+            await connection.query(
+                `INSERT INTO products
+                (name, description, price, original_price, discount_percent, category_id,
+                 brand, image_url, rating, rating_count, stock, highlights, specifications)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    product.name,
+                    product.description,
+                    product.price,
+                    product.original_price,
+                    product.discount_percent,
+                    product.category_id,
+                    product.brand,
+                    product.image_url,
+                    product.rating,
+                    product.rating_count,
+                    product.stock,
+                    product.highlights,
+                    product.specifications
+                ]
+            );
         }
         console.log(`✅ Inserted ${products.length} products\n`);
 
-        // Create a test user
-        console.log('Creating test user...');
+        /* ---------- TEST USER ---------- */
+        console.log('👤 Creating test user...');
         await connection.query(
             'INSERT IGNORE INTO users (id, email, name) VALUES (?, ?, ?)',
             ['test-user-123', 'test@example.com', 'Test User']
         );
-        console.log('✅ Test user ready (ID: test-user-123)\n');
+        console.log('✅ Test user created (test-user-123)\n');
 
-        console.log('═══════════════════════════════════════════');
-        console.log('🎉 Seed completed successfully!');
-        console.log('═══════════════════════════════════════════');
-        console.log('\nSummary:');
-        console.log(`  • ${categories.length} categories`);
-        console.log(`  • ${products.length} products`);
-        console.log(`  • 1 test user`);
-        console.log('\nTest user ID for API calls: test-user-123');
-        console.log('Use header: x-user-id: test-user-123');
+        /* ---------- DONE ---------- */
+        console.log('══════════════════════════════════════');
+        console.log('🎉 SEED COMPLETED SUCCESSFULLY');
+        console.log('══════════════════════════════════════');
+        console.log(`• ${categories.length} categories`);
+        console.log(`• ${products.length} products`);
+        console.log('• 1 test user');
+        console.log('\nUse header: x-user-id: test-user-123');
 
     } catch (error) {
         console.error('❌ Seed failed:', error.message);
         process.exit(1);
     } finally {
-        if (connection) {
-            await connection.end();
-        }
+        if (connection) connection.release();
+        await pool.end();
     }
 }
-
 seed();
