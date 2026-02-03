@@ -2,19 +2,24 @@ const mysql = require('mysql2/promise');
 
 // Create connection pool
 const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'flipkart_clone',
-    port: process.env.DB_PORT || 3306,
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: Number(process.env.DB_PORT),
+
+    ssl: {
+        rejectUnauthorized: false
+    },
+
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    connectTimeout: 20000
 });
 
 // SQL for creating tables
 const createTablesSQL = `
--- Categories table
 CREATE TABLE IF NOT EXISTS categories (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) NOT NULL UNIQUE,
@@ -23,7 +28,6 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Products table
 CREATE TABLE IF NOT EXISTS products (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
@@ -42,14 +46,9 @@ CREATE TABLE IF NOT EXISTS products (
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
-    INDEX idx_category (category_id),
-    INDEX idx_price (price),
-    INDEX idx_brand (brand),
-    FULLTEXT INDEX idx_search (name, description, brand)
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
 );
 
--- Users table (simplified - just for cart/order association)
 CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(36) PRIMARY KEY,
     email VARCHAR(255) UNIQUE,
@@ -57,7 +56,6 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Cart table
 CREATE TABLE IF NOT EXISTS cart_items (
     id INT PRIMARY KEY AUTO_INCREMENT,
     user_id VARCHAR(36) NOT NULL,
@@ -66,11 +64,9 @@ CREATE TABLE IF NOT EXISTS cart_items (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_user_product (user_id, product_id),
-    INDEX idx_user (user_id)
+    UNIQUE KEY unique_user_product (user_id, product_id)
 );
 
--- Orders table
 CREATE TABLE IF NOT EXISTS orders (
     id VARCHAR(36) PRIMARY KEY,
     user_id VARCHAR(36) NOT NULL,
@@ -79,12 +75,9 @@ CREATE TABLE IF NOT EXISTS orders (
     shipping_address JSON,
     payment_method VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_user (user_id),
-    INDEX idx_status (status)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- Order items table
 CREATE TABLE IF NOT EXISTS order_items (
     id INT PRIMARY KEY AUTO_INCREMENT,
     order_id VARCHAR(36) NOT NULL,
@@ -99,36 +92,21 @@ CREATE TABLE IF NOT EXISTS order_items (
 // Initialize database and create tables
 async function initializeDatabase() {
     try {
-        // First, create database if it doesn't exist
-        const tempConnection = await mysql.createConnection({
-            host: process.env.DB_HOST || 'localhost',
-            user: process.env.DB_USER || 'root',
-            password: process.env.DB_PASSWORD || ''
-        });
-        
-        await tempConnection.query(
-            `CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME || 'flipkart_clone'}`
-        );
-        await tempConnection.end();
-
-        // Now create tables
         const connection = await pool.getConnection();
-        
-        // Split and execute each CREATE TABLE statement
+
         const statements = createTablesSQL
             .split(';')
             .map(s => s.trim())
-            .filter(s => s.length > 0);
-        
-        for (const statement of statements) {
-            await connection.query(statement);
+            .filter(Boolean);
+
+        for (const stmt of statements) {
+            await connection.query(stmt);
         }
-        
+
         connection.release();
         console.log('✅ Database initialized successfully');
-        return true;
     } catch (error) {
-        console.error('❌ Database initialization error:', error.message);
+        console.error('❌ Database initialization error:', error);
         throw error;
     }
 }
